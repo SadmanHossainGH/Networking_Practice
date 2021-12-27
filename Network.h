@@ -1,8 +1,10 @@
 #pragma once
 
+constexpr unsigned int NET_PACKET_INPUT_HISTORY_SIZE = 10; 
+
 struct NetworkInputPackage
 {
-	unsigned int InputCommand{ 0 };
+	unsigned int InputHistory[NET_PACKET_INPUT_HISTORY_SIZE];
 	int FrameCount{ 0 };
 };
 

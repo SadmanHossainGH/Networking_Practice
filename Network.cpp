@@ -1,8 +1,11 @@
+
+#include <cstdio>
 #include "Network.h"
 //#include ClockSyncCommon.h
-#include <cstdio>
+
 
 //Matches enum used in raylib's logging mechanism
+// enum in this case are variables, with no strict datatype
 typedef enum
 {
 	LOG_ALL = 0,
@@ -15,6 +18,7 @@ typedef enum
 	LOG_NONE
 };
 
+// Log Trace marcos
 #define NET_LOG(...) printf(__VA_ARGS__);
 #define DISABLED_LOG(...)
 #define NBN_LogInfo(...) NET_LOG(__VA_ARGS__)
@@ -22,15 +26,19 @@ typedef enum
 #define NBN_LogDebug(...) NET_LOG(__VA_ARGS__)
 #define NBN_LogTrace(...) DISABLED_LOG(__VA_ARGS__)
 
-#include <winsock2.h>
+// networking libraries
 #define NBNET_IMPL
+#include <winsock2.h>
 #include "nbnet.h"
 #include "net_drivers/udp.h"
 
 #define HOST_PORT 50101
 #define PROTOCOL_NAME "clock_sync_test"
+
+// client connection
 static NBN_Connection *client = nullptr;
 
+// Start instance as Host
 bool InitalizeHost()
 {
 	NBN_GameServer_Init(PROTOCOL_NAME, HOST_PORT);
@@ -52,6 +60,7 @@ bool InitalizeHost()
 	return false;
 }
 
+// Start instance as Client
 void InitalizeClient()
 {
 	NBN_GameClient_Init(PROTOCOL_NAME, "127.0.0.1", HOST_PORT);
@@ -66,21 +75,27 @@ void InitalizeClient()
 	}
 }
 
+// decodes and encodes message to send
+// might not need to be used, might be used to
+// test if both sides can get a message
 void HandleMessage()
 {
-	//Get info about the recieved message
+	//Host gets info about the recieved message
 	NBN_MessageInfo msg_info = NBN_GameServer_GetMessageInfo();
 
 	//assert checks these conditions
 	assert(msg_info.sender == client);
 	assert(msg_info.type == NBN_BYTE_ARRAY_MESSAGE_TYPE);
 
+	// Get byte representation of recieved message
 	NBN_ByteArrayMessage *msg = (NBN_ByteArrayMessage*)msg_info.data;
 	
-	// Everything until Destroy is something to get rid of
+	// Create message to send based on recieved message
 	NBN_OutgoingMessage *outgoing_msg = NBN_GameServer_CreateByteArrayMessage(msg->bytes, msg->length);
 	assert(outgoing_msg);
 
+	// Exit if sending fails
+	// Send message to client
 	if (NBN_GameServer_SendReliableMessageTo(client, outgoing_msg) < 0)
 		exit(-1);
 
@@ -89,6 +104,7 @@ void HandleMessage()
 
 }
 
+// copy the message into an inputPacakge regardless of NetworkState
 NetworkInputPackage ReadInputMessageCommon(const NBN_MessageInfo& msg_info)
 {
 
@@ -96,9 +112,11 @@ NetworkInputPackage ReadInputMessageCommon(const NBN_MessageInfo& msg_info)
 	//assert(msg_info.sender == client);
 	assert(msg_info.type == NBN_BYTE_ARRAY_MESSAGE_TYPE);
 
+	//translate message info into bytes
 	NBN_ByteArrayMessage* msg = (NBN_ByteArrayMessage*)msg_info.data;
 
 
+	// copy the message bytes into inputPackage
 	NetworkInputPackage InputPackage;
 	memcpy(&InputPackage, msg->bytes, sizeof(NetworkInputPackage));
 
@@ -110,6 +128,7 @@ NetworkInputPackage ReadInputMessageCommon(const NBN_MessageInfo& msg_info)
 	return InputPackage;
 }
 
+// host reads message from client probably
 NetworkInputPackage ReadInputMessage()
 {
 	//Get info about the recieved message
@@ -117,6 +136,7 @@ NetworkInputPackage ReadInputMessage()
 	return ReadInputMessageCommon(msg_info);
 }
 
+// client reads message from host?
 NetworkInputPackage ReadInputMessageClient()
 {
 	//Get info about the recieved message
@@ -125,11 +145,13 @@ NetworkInputPackage ReadInputMessageClient()
 
 }
 
-//client version
+//client sends input package to host
+// check client to see potitental issues
 void SendInputMessage(NetworkInputPackage InputPackage)
 {
 	//create a nbnet outgoing message
-	NBN_OutgoingMessage* outgoing_msg = NBN_GameServer_CreateByteArrayMessage((uint8_t*)&InputPackage, sizeof(InputPackage));
+	//NBN_OutgoingMessage* outgoing_msg = NBN_GameServer_CreateByteArrayMessage((uint8_t*)&InputPackage, sizeof(InputPackage));
+	NBN_OutgoingMessage* outgoing_msg = NBN_GameClient_CreateByteArrayMessage((uint8_t*)&InputPackage, sizeof(InputPackage));
 
 	assert(outgoing_msg);
 
@@ -141,11 +163,11 @@ void SendInputMessage(NetworkInputPackage InputPackage)
 	}
 }
 
-//Host Version
+//Host send input package to client
 void SendInputMessageHost(NetworkInputPackage InputPackage)
 {
-	//create a nbnet outgoing message
-	NBN_OutgoingMessage *outgoing_msg = NBN_GameServer_CreateByteArrayMessage((uint8_t*)&InputPackage, sizeof(InputPackage));
+	//host creates a nbnet outgoing message
+	NBN_OutgoingMessage *outgoing_msg = NBN_GameServer_CreateByteArrayMessage((uint8_t *)&InputPackage, sizeof(InputPackage));
 
 	assert(outgoing_msg);
 
@@ -157,13 +179,20 @@ void SendInputMessageHost(NetworkInputPackage InputPackage)
 	}
 }
 
+// maybe the CPU clock ticks the host
 NetworkInputPackage TickNetworkHost(NetworkInputPackage InputPackage, bool& bRecievedInput)
 {
 	bRecievedInput = false;
 
+	// get the host to send message to client
+	// CHECK!!!
 	if (client)
 	{
-		SendInputMessageHost(InputPackage);
+		for (int i = 0; i < 5; i++)
+		{
+			//Host sends input package to client
+			SendInputMessageHost(InputPackage);
+		}
 	}
 
 	NetworkInputPackage ClientInputPackage{0, 0};
@@ -171,8 +200,11 @@ NetworkInputPackage TickNetworkHost(NetworkInputPackage InputPackage, bool& bRec
 	//Update the server clock
 	NBN_GameServer_AddTime(1.0 / 60.0);
 
+	//event variable
 	int ev;
-	// Poll for client events
+
+	// Poll inputs for client events
+	// while an event occurs
 	while ((ev = NBN_GameServer_Poll()) != NBN_NO_EVENT)
 	{
 		if (ev < 0)
@@ -186,10 +218,11 @@ NetworkInputPackage TickNetworkHost(NetworkInputPackage InputPackage, bool& bRec
 
 		switch (ev)
 		{
-		//Client is connected to the server
+		//Client connected to the Host
 		case NBN_NEW_CONNECTION:
 
 			// Echo server work with one single client at a time
+			// Accept the client if not null
 			if (client == nullptr)
 			{
 				client = NBN_GameServer_GetIncomingConnection();
@@ -198,8 +231,10 @@ NetworkInputPackage TickNetworkHost(NetworkInputPackage InputPackage, bool& bRec
 			}
 			break;
 
+		// recived message from client
 		case NBN_CLIENT_MESSAGE_RECEIVED:
 
+			// read input from client and indicate it was recivied 
 			ClientInputPackage = ReadInputMessage();
 			bRecievedInput = true;
 			break;
@@ -208,6 +243,7 @@ NetworkInputPackage TickNetworkHost(NetworkInputPackage InputPackage, bool& bRec
 	}
 
 	// Pack all enqueued messages as packets and send them
+	// send package to clients
 	if (NBN_GameServer_SendPackets() < 0)
 	{
 		NET_LOG("Failed to send packets\n");
@@ -219,6 +255,9 @@ NetworkInputPackage TickNetworkHost(NetworkInputPackage InputPackage, bool& bRec
 	return ClientInputPackage;
 }
 
+
+// this is the network tick that the client uses??
+// maybe the CPU clock ticks the client??
 NetworkInputPackage TickNetworkClient(NetworkInputPackage InputPackage, bool& bRecievedInput)
 {
 	bRecievedInput = false;
@@ -241,11 +280,12 @@ NetworkInputPackage TickNetworkClient(NetworkInputPackage InputPackage, bool& bR
 		switch (ev)
 		{
 
-		//Client is connected to the server
+		// Host is connected to client
 		case NBN_CONNECTED:
 				NET_LOG("Connect to host\n");
 				break;
-
+		
+		// read input for client??
 		case NBN_MESSAGE_RECEIVED:
 			HostInputPackage = ReadInputMessageClient();
 			bRecievedInput = true;
