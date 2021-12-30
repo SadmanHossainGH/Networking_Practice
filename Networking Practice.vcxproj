@@ -143,10 +143,12 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="ClockSyncCommon.cpp" />
     <ClCompile Include="Network.cpp" />
     <ClCompile Include="Source.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="ClockSyncCommon.h" />
     <ClInclude Include="Network.h" />
     <ClInclude Include="Source.h" />
   </ItemGroup>

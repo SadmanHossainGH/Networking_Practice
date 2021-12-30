@@ -1,0 +1,31 @@
+[2021-12-29 19:26:52][INFO] : Initializing raylib 4.0
+[2021-12-29 19:26:52][INFO] : DISPLAY: Device initialized successfully
+[2021-12-29 19:26:52][INFO] :     > Display size: 1920 x 1080
+[2021-12-29 19:26:52][INFO] :     > Screen size:  1080 x 768
+[2021-12-29 19:26:52][INFO] :     > Render size:  1080 x 768
+[2021-12-29 19:26:52][INFO] :     > Viewport offsets: 0, 0
+[2021-12-29 19:26:52][INFO] : GLAD: OpenGL extensions loaded successfully
+[2021-12-29 19:26:52][INFO] : GL: Supported extensions count: 224
+[2021-12-29 19:26:52][INFO] : GL: OpenGL device information:
+[2021-12-29 19:26:52][INFO] :     > Vendor:   Intel
+[2021-12-29 19:26:52][INFO] :     > Renderer: Intel(R) HD Graphics 620
+[2021-12-29 19:26:52][INFO] :     > Version:  3.3.0 - Build 24.20.100.6025
+[2021-12-29 19:26:52][INFO] :     > GLSL:     3.30 - Build 24.20.100.6025
+[2021-12-29 19:26:52][INFO] : GL: DXT compressed textures supported
+[2021-12-29 19:26:52][INFO] : GL: ETC2/EAC compressed textures supported
+[2021-12-29 19:26:52][INFO] : TEXTURE: [ID 1] Texture loaded successfully (1x1 | R8G8B8A8 | 1 mipmaps)
+[2021-12-29 19:26:52][INFO] : TEXTURE: [ID 1] Default texture loaded successfully
+[2021-12-29 19:26:52][INFO] : SHADER: [ID 1] Vertex shader compiled successfully
+[2021-12-29 19:26:52][INFO] : SHADER: [ID 2] Fragment shader compiled successfully
+[2021-12-29 19:26:52][INFO] : SHADER: [ID 3] Program shader loaded successfully
+[2021-12-29 19:26:52][INFO] : SHADER: [ID 3] Default shader loaded successfully
+[2021-12-29 19:26:52][INFO] : RLGL: Render batch vertex buffers loaded successfully in RAM (CPU)
+[2021-12-29 19:26:52][INFO] : RLGL: Render batch vertex buffers loaded successfully in VRAM (GPU)
+[2021-12-29 19:26:52][INFO] : RLGL: Default OpenGL state initialized successfully
+[2021-12-29 19:26:52][INFO] : TEXTURE: [ID 2] Texture loaded successfully (128x128 | GRAY_ALPHA | 1 mipmaps)
+[2021-12-29 19:26:52][INFO] : FONT: Default font loaded successfully (224 glyphs)
+[2021-12-29 19:26:52][INFO] : TIMER: Target time per frame: 16.667 milliseconds
+[2021-12-29 19:27:18][INFO] : TEXTURE: [ID 2] Unloaded texture data from VRAM (GPU)
+[2021-12-29 19:27:18][INFO] : SHADER: [ID 3] Default shader unloaded successfully
+[2021-12-29 19:27:18][INFO] : TEXTURE: [ID 1] Default texture unloaded successfully
+[2021-12-29 19:27:18][INFO] : Window closed successfully

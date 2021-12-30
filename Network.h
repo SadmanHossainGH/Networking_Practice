@@ -12,6 +12,8 @@ bool InitalizeHost();
 
 void InitalizeClient();
 
+bool IsClientConnected();
+
 void HandleMessage();
 
 NetworkInputPackage TickNetworkHost(NetworkInputPackage InputPackage, bool& bRecievedInput);

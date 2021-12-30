@@ -37,6 +37,7 @@ typedef enum
 
 // client connection
 static NBN_Connection *client = nullptr;
+bool client_connected = false;
 
 // Start instance as Host
 bool InitalizeHost()
@@ -73,6 +74,11 @@ void InitalizeClient()
 		NBN_GameClient_Deinit();
 		exit(-1);
 	}
+}
+
+bool IsClientConnected()
+{
+	return client_connected;
 }
 
 // decodes and encodes message to send
@@ -227,6 +233,7 @@ NetworkInputPackage TickNetworkHost(NetworkInputPackage InputPackage, bool& bRec
 			{
 				client = NBN_GameServer_GetIncomingConnection();
 				NBN_GameServer_AcceptIncomingConnection();
+				client_connected = true;
 				NET_LOG("Accepting client connection\n");
 			}
 			break;

@@ -8,8 +8,7 @@
 #include "raylib.h"
 #include "Source.h"
 #include "Network.h"
-
-#define NET_LOG(...) printf(__VA_ARGS__);
+#include "ClockSyncCommon.h"
 
 // Network State of Gamestate/Entity
 enum class NetworkState
@@ -27,6 +26,13 @@ enum class BootNetworkSetting
     NoConnection,
     Host,
     Client
+};
+
+// Network State of Gamestate/Entity
+enum class NetworkSyncType
+{
+    LockStep,
+    Rollback
 };
 
 // Stores the input state for a given frame 
@@ -111,7 +117,7 @@ namespace EntitySettings
     const int CircleRadius { 50 };
     const int StartDistance { 400 };
     const int StartHeight { 100 };
-    const int MoveSpeed { 4 };
+    const int MoveSpeed { 10 };
 }
 
 // Draws Entities on screen
@@ -176,6 +182,9 @@ int main(/*void*/ int argc, char** argv)
     // Initallly doesn't boot using a connection
     BootNetworkSetting NetworkModeSetting = BootNetworkSetting::NoConnection;
 
+    NetworkSyncType NetSyncType = NetworkSyncType::Rollback;
+    //NetworkSyncType NetSyncType = NetworkSyncType::LockStep;
+
     // boots based on command arguments?, neeed to expirement on this
     // more
     if (argc >= 2)
@@ -183,13 +192,23 @@ int main(/*void*/ int argc, char** argv)
         if (argv[1][0] == 'c')
         {
             NetworkModeSetting = BootNetworkSetting::Client;
-            NET_LOG("Booted Client\n");
+            NetLog(LOG_ALL, "Booted Client\n");
         }
         else if (argv[1][0] == 's')
         {
             NetworkModeSetting = BootNetworkSetting::Host;
-            NET_LOG("Booted Host\n");
+            NetLog(LOG_ALL, "Booted Host\n");
 
+        }
+
+        if (argc >= 3)
+        {
+            NetLog(LOG_ALL, "Found 3 Arguments\n");
+            // Override rollback mode and run  matches in deterministic lockstep (delay based)
+            if (argv[2][0] == 'd')
+            {
+                NetSyncType = NetworkSyncType::LockStep;
+            }
         }
     }
 
@@ -224,7 +243,7 @@ int main(/*void*/ int argc, char** argv)
 
 
     //Look to see what needs to be added for this
-    //SetTraceLogCallback(LogCustom);
+    SetTraceLogCallback(LogCustom);
 
     // Set Windows size and name
     // 60 frames per second
@@ -248,6 +267,9 @@ int main(/*void*/ int argc, char** argv)
     // Entire GameState instance for main()
     SimulationState GameState;
 
+    // Store GameState when rolling back
+    SimulationState SavedGameState;
+
     // Initial Positions for both players to stay in sync between clients
     GameState.Entities[0].Position.X = -(EntitySettings::StartDistance / 2);
     GameState.Entities[0].Position.Y = EntitySettings::StartHeight;
@@ -264,13 +286,10 @@ int main(/*void*/ int argc, char** argv)
 
     // Network Input Buffer used to delay by one frame
     // initally 0 before game loop
-    unsigned int NetInputBuffer = 0;
+    unsigned int PolledInput = 0;
 
-    // Recieved Input History from other side (DON"T NEED ANYMORE)
-    //const int NET_INPUT_HISTORY_COUNT = 10;
-
-    // Stores last 10 inputs (DON'T NEED ANYMORE)
-    //NetworkInputPackage NetworkInputHistory[NET_INPUT_HISTORY_COUNT];
+    // Indicates the most recent confirmed frame from the other palyer received over the network
+    int LatestNetworkFrame = -1;
 
     //60 seconds * 60 frame * 3 = 3 minute match 
     constexpr int INPUT_HISTORY_SIZE = 3*60*60;
@@ -283,13 +302,29 @@ int main(/*void*/ int argc, char** argv)
     // Current Index of History, incrmement each time a package is recieved
     int InputHistoryIndex = 0;
 
-    //Latest confirmed frame recieived from network
-    int LatestNetworkFrame = -1;
-
     // memset sets the first num bytes (3rd param) of the block of memory pointed by ptr (1st param)
     // to the specified value (2nd param) (interpreted as an unsigned char)
     // clears InputHistory ?
     memset(InputHistory,0, 2 * INPUT_HISTORY_SIZE * sizeof(unsigned int));
+
+    // accessors for  InputHistory need to fix
+    //auto GetInputHistory = [&InputHistory](int player, int frame) -> unsigned int { return InputHistory[player * INPUT_HISTORY_SIZE + frame];
+    //auto SendInputHistory = [&InputHistory](int player, int frame, unsigned int value) { InputHistory[player * INPUT_HISTORY_SIZE + frame]
+
+    // we only want to poll for the local inputs once, even if the frame is not updated
+    // desyncs in rollback are mostly caused by not storing inputs correctly
+    // THINK ABOUT RESENDING PACKETS IF REQUESTED AFTER THIS IS DONE AS AN EXCERCISE
+    bool bUpdatePolledInput = true;
+
+    // Before we start the game, store the inital game state
+    memcpy(&SavedGameState, &GameState, sizeof(SavedGameState));
+
+    // Number of out-of-sync frames
+    // int OutOfSyncFrames = 0;
+
+    // Record the frame number of the last game state frame that we saved
+    // -1 becayse we haven't stored frame 0 yet
+    int LastSavedGameStateFrame = -1;
 
     // ---------------------------------------MAIN GAME LOOP--------------------------------------------------------
     while (!WindowShouldClose())
@@ -298,28 +333,18 @@ int main(/*void*/ int argc, char** argv)
         GameState.Inputs[0] = 0;
         GameState.Inputs[1] = 0;
 
-
-        // Only check for starting host/client when not initialized already
-        // The option to make an instance a host or client can be initalized
-        // using the arguments or H/C keys
-        if (NetState == NetworkState::None)
+        //Save State for rollbacks
+        if (NetworkModeSetting == BootNetworkSetting::NoConnection)
         {
-            if (IsKeyDown(KEY_H))
+            //Save Game State
+            if (IsKeyPressed(KEY_S))
             {
-                //Initalize Host
-                InitalizeHost();
-                NetState = NetworkState::Host;
-                OpponentSide = 1;
-                LocalSide = 0;
-
+                memcpy(&SavedGameState, &GameState, sizeof(SavedGameState));
             }
-             else if (IsKeyDown(KEY_C))
+            // Restore Game State
+            else if (IsKeyPressed(KEY_R))
             {
-                //Initalize Client
-                InitalizeClient();
-                NetState = NetworkState::Client;
-                OpponentSide = 0;
-                LocalSide = 1;
+                memcpy(&GameState, &SavedGameState, sizeof(GameState));
             }
         }
 
@@ -334,45 +359,49 @@ int main(/*void*/ int argc, char** argv)
         // (NOT NEEDED ANYMORE, HERE FOR REFERENCE)
         // GameState.Inputs[!OpponentSide] = NetInputBuffer;
 
-        // clear buffer value
-        NetInputBuffer = 0;
+        // The input value we poll on the local client. This will be sent to the remote client after polling as well 
+        PolledInput = 0;
 
-        // Update Input
-        if (IsWindowFocused())
+        if (bUpdatePolledInput)
         {
-            // Storing Inputs in input buffer
-            if (IsKeyDown(KEY_UP))
+            // Update Input
+            if (IsWindowFocused())
             {
-                NetInputBuffer |= static_cast<unsigned int>(InputCommand::Up);
+                // Storing Inputs in input buffer
+                if (IsKeyDown(KEY_UP))
+                {
+                    PolledInput |= static_cast<unsigned int>(InputCommand::Up);
+                }
+
+                if (IsKeyDown(KEY_DOWN))
+                {
+                    PolledInput |= static_cast<unsigned int>(InputCommand::Down);
+                }
+
+                if (IsKeyDown(KEY_LEFT))
+                {
+                    PolledInput |= static_cast<unsigned int>(InputCommand::Left);
+                }
+
+                if (IsKeyDown(KEY_RIGHT))
+                {
+                    PolledInput |= static_cast<unsigned int>(InputCommand::Right);
+                }
             }
 
-            if (IsKeyDown(KEY_DOWN))
+            // Record this input in the history buffer to send to other player
+            // Send as soon as possible to reduce latency
+            // note: buffer overrun possible
+            if (GameState.FrameCount < INPUT_HISTORY_SIZE - NET_INPUT_DELAY)
             {
-                NetInputBuffer |= static_cast<unsigned int>(InputCommand::Down);
+                // Polling for the next frame due to 1 frame delay
+                InputHistory[LocalSide][GameState.FrameCount + NET_INPUT_DELAY] = PolledInput;
             }
 
-            if (IsKeyDown(KEY_LEFT))
-            {
-                NetInputBuffer |= static_cast<unsigned int>(InputCommand::Left);
-            }
-
-            if (IsKeyDown(KEY_RIGHT))
-            {
-                NetInputBuffer |= static_cast<unsigned int>(InputCommand::Right);
-            }
+            bUpdatePolledInput = false;
         }
 
-        
-        // Record this input in the history buffer to send to other player
-        // Send as soon as possible to reduce latency
-        // note: buffer overrun possible
-        if (GameState.FrameCount < INPUT_HISTORY_SIZE - NET_INPUT_DELAY)
-        {
-            // Polling for the next frame due to 1 frame delay
-            InputHistory[LocalSide][GameState.FrameCount + NET_INPUT_DELAY] = NetInputBuffer;
-        }
 
-       
         // Input Package has frame count of -1
         // to make frame count 0 when imcermented  
         NetworkInputPackage LatestInputPackage{ 0, -1 };
@@ -423,29 +452,10 @@ int main(/*void*/ int argc, char** argv)
             LatestInputPackage = TickNetworkClient(ToSendNetPackage, bRecievedNetworkInput);
         }
 
-
-        // searches input buffer to find input that matches current frame
-        // we don't want to repeatedly overwrite with the buffer 
-        // so if it already in buffer don't update again
-        //for (const auto& InputPackage : NetworkInputHistory)
-        //{
-        //    if (InputPackage.FrameCount == LatestInputPackage.FrameCount)
-        //    {
-        //        // don't update the buffer
-        //        bRecievedNetworkInput = false;
-        //        break;
-        //    }
-        //}
-        
         // store latest input package if inputs were recived from other side
         if (bRecievedNetworkInput)
         {
-            NET_LOG("Received Net Input: Frame [%d] \n", LatestInputPackage.FrameCount);
-            
-            // Update input buffer and increment index
-            // want buffer to loop back to 0
-            //NetworkInputHistory[InputHistoryIndex] = LatestInputPackage;
-            //InputHistoryIndex = (InputHistoryIndex + 1) % NET_INPUT_HISTORY_COUNT;
+            NetLog(LOG_ALL, "Received Net Input: Frame [%d] \n", LatestInputPackage.FrameCount);
 
             const int StartFrame = LatestInputPackage.FrameCount - NET_PACKET_INPUT_HISTORY_SIZE + 1;
 
@@ -461,7 +471,7 @@ int main(/*void*/ int argc, char** argv)
                     LatestNetworkFrame++;
                 }
 
-                //NET_LOG("Input[%u] Frame[%d] \n", LatestInputPackage.InputHistory[i] , (LatestInputPackage.FrameCount - NET_PACKET_INPUT_HISTORY_SIZE + 1 + i));
+                //NET_LOG("Input[%u] Frame[%d] \n", LatestInputPackage.InputHistory[i] , (LatestInputPackage.FrameCount - NET_PACKET_INPUT_HISTORY_SIZE + i));
                 // Records other player's input to be used in game simulation
                 InputHistory[OpponentSide][StartFrame + i] = LatestInputPackage.InputHistory[i];
             }
@@ -470,41 +480,118 @@ int main(/*void*/ int argc, char** argv)
         // first frame we send the inputs, but don't simulate our side
         // we wait until we get the opponent input then we update
         // need make sure, but check if frame can be updated
-        //1:28 - explanation of input buffer
         // can be true if frame count == 0 since we don't want to
         // apply a new input, but we want to move to the next frame
         bool bUpdateNextFrame = (GameState.FrameCount == 0);
 
-        // Only update frame in game simulation when we have input for target frame 
-        if (LatestNetworkFrame >= GameState.FrameCount)
+        //The number of times we need to run the game simulation
+        int SimulatedFrames = 1;
+
+
+        if ((NetSyncType == NetworkSyncType::Rollback) && (IsClientConnected()))
         {
+            // TODO??? (IMPLEMENT). Forward sim always at the moment 
             bUpdateNextFrame = true;
+
+        }
+        else if (NetSyncType == NetworkSyncType::LockStep)
+        {
+            // Only update frame in game simulation when we have input for target frame 
+            if (LatestNetworkFrame >= GameState.FrameCount)
+            {
+                bUpdateNextFrame = true;
+            }
         }
 
-        //1:03
         // don't update frame if not classified as client/host
         if (NetState == NetworkState::None)
         {
             bUpdateNextFrame = false;
         }
 
+        // Allow game simluation when not in network mode
+        if (NetworkModeSetting == BootNetworkSetting::NoConnection)
+        {
+            bUpdateNextFrame = true;
+        }
+
+        // Indicates whether or not we are resimulating the game after a rollback restore event
+        bool bIsResimulating = false;
+
+        // How many times we run the game simulation
+        // normally one, but we could need to do more during rollbacks
+        int SimulationFrames = 1;
+
+        //Detect if we have new inputs so we can resimulate the game (rollback)
+        if (LatestNetworkFrame > LastSavedGameStateFrame)
+        {
+            NetLog(LOG_ALL, " Rolling Back Ticked[%d] LastSavedGameStateFrame[%d] GameState.FrameCount[%d]", LatestNetworkFrame,LastSavedGameStateFrame,GameState.FrameCount);
+            //bIsResimulating = true;
+            bUpdateNextFrame = true;
+
+            // Calculates the number of frames we need to resimulate plus the current frame
+            // during rollbacks
+            SimulationFrames = GameState.FrameCount - LastSavedGameStateFrame;
+
+
+            // Rextore the last saved game state
+            memcpy(&GameState, &SavedGameState, sizeof(GameState));
+
+        }
+
         // if allowed to move on to next frame, apply opponents input to
         // gamestate and increment frame
-        if ( bUpdateNextFrame)
+        if (bUpdateNextFrame)
         {
-            NET_LOG("Game Ticked [%d] \n", GameState.FrameCount);
+            // Run the game simulation the number of times previously determined
+            //SimFrame = Simulation Frame
+            for (int SimFrame = 0; SimFrame < SimulationFrames; SimFrame++)
+            {
 
-            // Assign the local player's input with delay applied
-            GameState.Inputs[LocalSide] = InputHistory[LocalSide][GameState.FrameCount + NET_INPUT_DELAY];
+                NetLog(LOG_ALL, "Game Ticked [%d] \n", GameState.FrameCount);
 
-            //Assign our opponents input from network
-            GameState.Inputs[OpponentSide] = InputHistory[OpponentSide][GameState.FrameCount];
+                // Assign the local player's input with delay applied
+                GameState.Inputs[LocalSide] = InputHistory[LocalSide][GameState.FrameCount];
 
-            // Apply inputs to GameState
-            UpdateSimulation(GameState);
+                //Assign our opponents input from network
+                GameState.Inputs[OpponentSide] = InputHistory[OpponentSide][GameState.FrameCount];
 
-            // Update frame count
-            GameState.FrameCount++;
+                SyncLog("Frame(%d) P1[%x] P2[%x]", GameState.FrameCount, GameState.Inputs[0], GameState.Inputs[1]);
+
+                // Apply inputs to GameState
+                UpdateSimulation(GameState);
+
+                // allow for inital input to be polled for the buffer to send
+                bUpdatePolledInput = true;
+
+                // Update frame count
+                GameState.FrameCount++;
+
+
+                // resimlulate from last saved gamestate using correct inputs
+                if (bIsResimulating)
+                {
+                    // Save the game state when we have input for this frame
+                    // -1 because we just updated frame count, we know we
+                    // had inputs for the previous
+                    if (LatestNetworkFrame >= (GameState.FrameCount - 1))
+                    {
+                        // Save frame count
+                        LastSavedGameStateFrame = GameState.FrameCount - 1;
+                        //store the inital game state
+                        memcpy(&SavedGameState, &GameState, sizeof(SavedGameState));
+                    }
+
+                }
+
+                // If we are ahead of the latest confirmed input frame
+                // track the numver of forward sim frames
+                //if (LatestNetworkFrame > GameState.FrameCount)
+                //{
+                //    // how many frames to rollback
+                //    OutOfSyncFrames++;
+                //}
+            }
         }
 
         // Drawing Section
@@ -521,6 +608,17 @@ int main(/*void*/ int argc, char** argv)
 
             DrawText(TextFormat("Frame Count [%d]", GameState.FrameCount), 10, 80, 10, WHITE);
             DrawText(TextFormat("Net Frame   [%d]", LatestInputPackage.FrameCount), 10, 100, 10, WHITE);
+            DrawText(TextFormat("Input Delay [%d]", NET_INPUT_DELAY), 10, 120, 10, WHITE);
+
+            if (NetSyncType == NetworkSyncType::Rollback)
+            {
+                DrawText("[Rollback Mode]", 10, 140, 10, BLUE);
+            }
+            else if (NetSyncType == NetworkSyncType::LockStep)
+            {
+                DrawText("[Delay Mode]", 10, 140, 10, BLUE);
+            }
+
 
             EndDrawing();
         }
