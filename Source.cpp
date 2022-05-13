@@ -110,6 +110,7 @@ int PingToTicks(int PinginMS)
 const int SCREEN_WIDTH = 1080;
 const int SCREEN_HEIGHT = 768;
 const int TARGET_FRAME_RATE = 60;
+constexpr int MAX_ROLLBACK_FRAMES = 10;
 
 // Configurable properties for entity
 namespace EntitySettings
@@ -410,9 +411,8 @@ int main(/*void*/ int argc, char** argv)
         bool bRecievedNetworkInput = false;
 
         NetworkInputPackage  ToSendNetPackage;
+        const int LatestLocalFrameDelta = GameState.FrameCount - LatestNetworkFrame;
 
-
-        // Ended Fixing code at 47:53
         // Prepare the network package to send to the opponent
         {
             const int InputStartIndex = GameState.FrameCount - NET_PACKET_INPUT_HISTORY_SIZE + 1 + NET_INPUT_DELAY;
@@ -436,6 +436,9 @@ int main(/*void*/ int argc, char** argv)
 
             // Indicates the frame the final input in the buffer is designated for
             ToSendNetPackage.FrameCount = GameState.FrameCount + NET_INPUT_DELAY;
+
+            // send latency difference to other player
+            ToSendNetPackage.FrameDelta = LatestLocalFrameDelta;
         }
 
 
@@ -460,7 +463,7 @@ int main(/*void*/ int argc, char** argv)
             const int StartFrame = LatestInputPackage.FrameCount - NET_PACKET_INPUT_HISTORY_SIZE + 1;
 
             // Used to see correct frames in log for testing
-            // records oppoents frames for every inputs up to the current into buffer
+            // records oppoents frames for every inputs up to the current frame into buffer
             for (int i = 0; i < NET_PACKET_INPUT_HISTORY_SIZE; i++)
             {
                 const int CheckFrame = StartFrame + i;
@@ -487,11 +490,25 @@ int main(/*void*/ int argc, char** argv)
         //The number of times we need to run the game simulation
         int SimulatedFrames = 1;
 
-
         if ((NetSyncType == NetworkSyncType::Rollback) && (IsClientConnected()))
         {
-            // TODO??? (IMPLEMENT). Forward sim always at the moment 
-            bUpdateNextFrame = true;
+
+             // frame limiter
+            // limit the amount of frames we allow for rollbacks
+            // by limiting how far ahread we can get ahead of the opponent
+            // more frames to resimulate = more artifacts/desyncs
+            // updates frame if true, doesn't if false
+            //WE DO NOT WANT [THIS INSTANCE] TO GET TO AHEAD
+            bUpdateNextFrame = (GameState.FrameCount < LatestNetworkFrame + MAX_ROLLBACK_FRAMES);
+
+           // Check the frame delta difference of the local client and the remote in order to sync client
+           // not 0 because we want some leinency
+           if (LatestLocalFrameDelta - LatestInputPackage.FrameDelta > 1)
+           {
+               //If we have the faster amount of time it took for an input package to reach
+               //us (we are ahead)
+               bUpdateNextFrame = false;
+           }
 
         }
         else if (NetSyncType == NetworkSyncType::LockStep)
@@ -526,7 +543,7 @@ int main(/*void*/ int argc, char** argv)
         if (LatestNetworkFrame > LastSavedGameStateFrame)
         {
             NetLog(LOG_ALL, " Rolling Back Ticked[%d] LastSavedGameStateFrame[%d] GameState.FrameCount[%d]", LatestNetworkFrame,LastSavedGameStateFrame,GameState.FrameCount);
-            //bIsResimulating = true;
+            bIsResimulating = true;
             bUpdateNextFrame = true;
 
             // Calculates the number of frames we need to resimulate plus the current frame
@@ -538,6 +555,13 @@ int main(/*void*/ int argc, char** argv)
             memcpy(&GameState, &SavedGameState, sizeof(GameState));
 
         }
+
+        // Force the game simulation to pause while the button is held
+        if (IsKeyDown(KEY_P))
+        {
+            bUpdateNextFrame = false;
+        }
+
 
         // if allowed to move on to next frame, apply opponents input to
         // gamestate and increment frame
@@ -609,16 +633,18 @@ int main(/*void*/ int argc, char** argv)
             DrawText(TextFormat("Frame Count [%d]", GameState.FrameCount), 10, 80, 10, WHITE);
             DrawText(TextFormat("Net Frame   [%d]", LatestInputPackage.FrameCount), 10, 100, 10, WHITE);
             DrawText(TextFormat("Input Delay [%d]", NET_INPUT_DELAY), 10, 120, 10, WHITE);
+            // delta could be 1 because be gave a tolerance of > 1 frame for the frame
+            // to update
+            DrawText(TextFormat("Frame Delta [%d]", LatestLocalFrameDelta), 10, 140, 10, WHITE);
 
             if (NetSyncType == NetworkSyncType::Rollback)
             {
-                DrawText("[Rollback Mode]", 10, 140, 10, BLUE);
+                DrawText("[Rollback Mode]", 10, 160, 10, BLUE);
             }
             else if (NetSyncType == NetworkSyncType::LockStep)
             {
-                DrawText("[Delay Mode]", 10, 140, 10, BLUE);
+                DrawText("[Delay Mode]", 10, 160, 10, BLUE);
             }
-
 
             EndDrawing();
         }

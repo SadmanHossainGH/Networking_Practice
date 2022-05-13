@@ -6,6 +6,8 @@ struct NetworkInputPackage
 {
 	unsigned int InputHistory[NET_PACKET_INPUT_HISTORY_SIZE];
 	int FrameCount{ 0 };
+	// differenceof frames
+	int FrameDelta{ 0 };
 };
 
 bool InitalizeHost();
