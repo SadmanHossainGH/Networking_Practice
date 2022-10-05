@@ -47,7 +47,6 @@ bool InitalizeHost()
 	//Start Server
 	if (NBN_GameServer_Start() < 0)
 	{
-		//NET_LOG("Failed to start the server\n");
 		NET_LOG("Failed to start the server\n");
 
 		//Deinit server
@@ -57,6 +56,7 @@ bool InitalizeHost()
 		return true;
 	}
 
+	NET_LOG("? \n");
 	NET_LOG("Started Hosting..........\n");
 	return false;
 }
@@ -65,6 +65,9 @@ bool InitalizeHost()
 void InitalizeClient()
 {
 	NBN_GameClient_Init(PROTOCOL_NAME, "127.0.0.1", HOST_PORT);
+
+	NET_LOG("? \n");
+	NET_LOG("FAILED \n");
 
 	if (NBN_GameClient_Start() < 0)
 	{
@@ -126,7 +129,7 @@ NetworkInputPackage ReadInputMessageCommon(const NBN_MessageInfo& msg_info)
 	NetworkInputPackage InputPackage;
 	memcpy(&InputPackage, msg->bytes, sizeof(NetworkInputPackage));
 
-	//NET_LOG("Input Recieved: Input: %d , Frame: %d ", InputPackage.InputCommand, InputPackage.FrameCount);
+	//NET_LOG("Input Recieved: Input: %d , Frame: %d  \n", InputPackage.InputHistory[9], InputPackage.FrameCount);
 
 	// Destroy the recieved message
 	NBN_ByteArrayMessage_Destroy(msg);
@@ -253,7 +256,7 @@ NetworkInputPackage TickNetworkHost(NetworkInputPackage InputPackage, bool& bRec
 	// send package to clients
 	if (NBN_GameServer_SendPackets() < 0)
 	{
-		NET_LOG("Failed to send packets\n");
+		NET_LOG("Failed to send packets \n");
 
 		//Error quit server application
 		exit(-1);

@@ -6,7 +6,7 @@ struct NetworkInputPackage
 {
 	unsigned int InputHistory[NET_PACKET_INPUT_HISTORY_SIZE];
 	int FrameCount{ 0 };
-	// differenceof frames
+	// difference of frames
 	int FrameDelta{ 0 };
 };
 

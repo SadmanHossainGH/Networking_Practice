@@ -20,7 +20,7 @@ enum class NetworkState
 
 // State that we can boot an instance to
 // used if we want to make instances
-// clients and hosts with arguments
+// client or host via cmd arguments
 enum class BootNetworkSetting
 {
     NoConnection,
@@ -28,7 +28,7 @@ enum class BootNetworkSetting
     Client
 };
 
-// Network State of Gamestate/Entity
+// Netcode Type
 enum class NetworkSyncType
 {
     LockStep,
@@ -36,7 +36,7 @@ enum class NetworkSyncType
 };
 
 // Stores the input state for a given frame 
-// and player in bitwise
+// for player in bitwise
 enum class InputCommand : unsigned int
 {
     // Powers of 2 to do bitwise OR operation
@@ -122,7 +122,6 @@ namespace EntitySettings
 }
 
 // Draws Entities on screen
-// 1:03 on frame limiting video  for look at source.cpp up to that point
 void DrawEntity(const EntityState& State, Color color)
 {
     DrawCircle(/* X */ State.Position.X + (SCREEN_WIDTH/2) , /* Y */SCREEN_HEIGHT - State.Position.Y,EntitySettings::CircleRadius, color);
@@ -190,12 +189,12 @@ int main(/*void*/ int argc, char** argv)
     // more
     if (argc >= 2)
     {
-        if (argv[1][0] == 'c')
+        if (argv[1][0] == 'C')
         {
             NetworkModeSetting = BootNetworkSetting::Client;
             NetLog(LOG_ALL, "Booted Client\n");
         }
-        else if (argv[1][0] == 's')
+        else if (argv[1][0] == 'H')
         {
             NetworkModeSetting = BootNetworkSetting::Host;
             NetLog(LOG_ALL, "Booted Host\n");
@@ -250,18 +249,18 @@ int main(/*void*/ int argc, char** argv)
     // 60 frames per second
     InitWindow(SCREEN_WIDTH,SCREEN_HEIGHT, WindowTitle);
 
-    //switch (NetworkModeSetting)
-    //{
-    //    case BootNetworkSetting::Host:
-    //        SetWindowPosition(2000, 0);
-    //        break;
-    //    case BootNetworkSetting::Client:
-    //        SetWindowPosition(3000, 0);
-    //        break;
-    //    default:
-    //        SetWindowPosition(3000, 0);
-    //        break;
-    //}
+    /*switch (NetworkModeSetting)
+    {
+        case BootNetworkSetting::Host:
+            SetWindowPosition(2000, 50);
+            break;
+        case BootNetworkSetting::Client:
+            SetWindowPosition(3000, 50);
+            break;
+        default:
+            SetWindowPosition(3000, 50);
+            break;
+    }*/
 
     SetTargetFPS(60);
 
@@ -300,8 +299,8 @@ int main(/*void*/ int argc, char** argv)
     //IMPORTANT
     unsigned int InputHistory[2][INPUT_HISTORY_SIZE];
 
-    // Current Index of History, incrmement each time a package is recieved
-    int InputHistoryIndex = 0;
+    // Current Index of History, incrmement each time a package is recieved, NEVER USED
+    //int InputHistoryIndex = 0;
 
     // memset sets the first num bytes (3rd param) of the block of memory pointed by ptr (1st param)
     // to the specified value (2nd param) (interpreted as an unsigned char)
@@ -404,7 +403,7 @@ int main(/*void*/ int argc, char** argv)
 
 
         // Input Package has frame count of -1
-        // to make frame count 0 when imcermented  
+        // to make frame count 0 when incremented  
         NetworkInputPackage LatestInputPackage{ 0, -1 };
 
         // check if input was recieved from ticks
@@ -490,16 +489,16 @@ int main(/*void*/ int argc, char** argv)
         //The number of times we need to run the game simulation
         int SimulatedFrames = 1;
 
-        if ((NetSyncType == NetworkSyncType::Rollback) && (IsClientConnected()))
+        if ((NetSyncType == NetworkSyncType::Rollback) /* && (IsClientConnected())*/)
         {
 
              // frame limiter
             // limit the amount of frames we allow for rollbacks
-            // by limiting how far ahread we can get ahead of the opponent
+            // by limiting how far ahead we can get ahead of the opponent
             // more frames to resimulate = more artifacts/desyncs
             // updates frame if true, doesn't if false
             //WE DO NOT WANT [THIS INSTANCE] TO GET TO AHEAD
-            bUpdateNextFrame = (GameState.FrameCount < LatestNetworkFrame + MAX_ROLLBACK_FRAMES);
+            bUpdateNextFrame = GameState.FrameCount < (LatestNetworkFrame + MAX_ROLLBACK_FRAMES - 1);
 
            // Check the frame delta difference of the local client and the remote in order to sync client
            // not 0 because we want some leinency
@@ -537,18 +536,19 @@ int main(/*void*/ int argc, char** argv)
 
         // How many times we run the game simulation
         // normally one, but we could need to do more during rollbacks
+        // based on how many frames we are ahread of the opponent without input
         int SimulationFrames = 1;
 
         //Detect if we have new inputs so we can resimulate the game (rollback)
         if (LatestNetworkFrame > LastSavedGameStateFrame)
         {
-            NetLog(LOG_ALL, " Rolling Back Ticked[%d] LastSavedGameStateFrame[%d] GameState.FrameCount[%d]", LatestNetworkFrame,LastSavedGameStateFrame,GameState.FrameCount);
             bIsResimulating = true;
             bUpdateNextFrame = true;
 
             // Calculates the number of frames we need to resimulate plus the current frame
             // during rollbacks
             SimulationFrames = GameState.FrameCount - LastSavedGameStateFrame;
+            NetLog(LOG_ALL, " Roll: Simulation Frames [%d] LatestNetworkFrame[%d] GameState.FrameCount[%d]",SimulationFrames,LatestNetworkFrame, GameState.FrameCount);
 
 
             // Rextore the last saved game state
@@ -593,6 +593,8 @@ int main(/*void*/ int argc, char** argv)
 
 
                 // resimlulate from last saved gamestate using correct inputs
+                // WAIT it might be if we know we are syncronized the we can save the current gamestate
+                // so I guess this tracks synchronization
                 if (bIsResimulating)
                 {
                     // Save the game state when we have input for this frame
